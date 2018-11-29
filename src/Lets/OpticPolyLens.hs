@@ -42,13 +42,18 @@ module Lets.OpticPolyLens (
 , modifyIntandLengthEven
 ) where
 
-import Data.Char(toUpper)
-import Data.Map(Map)
-import qualified Data.Map as Map(insert, delete, lookup)
-import Data.Set(Set)
-import qualified Data.Set as Set(insert, delete, member)
-import Lets.Data(AlongsideLeft(AlongsideLeft, getAlongsideLeft), AlongsideRight(AlongsideRight, getAlongsideRight), Identity(Identity, getIdentity), Const(Const, getConst), IntAnd(IntAnd), Person(Person), Locality(Locality), Address(Address), bool)
-import Prelude hiding (product)
+import           Data.Char (toUpper)
+import           Data.Map  (Map)
+import qualified Data.Map  as Map (delete, insert, lookup)
+import           Data.Set  (Set)
+import qualified Data.Set  as Set (delete, insert, member)
+import           Lets.Data (Address (Address),
+                            AlongsideLeft (AlongsideLeft, getAlongsideLeft),
+                            AlongsideRight (AlongsideRight, getAlongsideRight),
+                            Const (Const, getConst),
+                            Identity (Identity, getIdentity), IntAnd (IntAnd),
+                            Locality (Locality), Person (Person), bool)
+import           Prelude   hiding (product)
 
 -- $setup
 -- >>> import qualified Data.Map as Map(fromList)
@@ -101,7 +106,7 @@ setsetLaw ::
   -> s
   -> b
   -> b
-  -> Bool 
+  -> Bool
 setsetLaw l a b1 b2 =
   set l (set l a b1) b2 == set l a b2
 
@@ -123,8 +128,9 @@ modify ::
   -> (a -> b)
   -> s
   -> t
-modify =
-  error "todo: modify"
+modify (Lens r) f =
+  getIdentity . r (Identity . f)
+
 
 -- | An alias for @modify@.
 (%~) ::
@@ -153,8 +159,8 @@ infixr 4 %~
   -> b
   -> s
   -> t
-(.~) =
-  error "todo: (.~)"
+(.~) l =
+  modify l . const
 
 infixl 5 .~
 
@@ -173,9 +179,10 @@ fmodify ::
   Lens s t a b
   -> (a -> f b)
   -> s
-  -> f t 
-fmodify =
-  error "todo: fmodify"
+  -> f t
+fmodify (Lens r) =
+  r
+
 
 -- |
 --
@@ -190,8 +197,8 @@ fmodify =
   -> f b
   -> s
   -> f t
-(|=) =
-  error "todo: (|=)"
+(|=) l =
+  fmodify l . const
 
 infixl 5 |=
 
@@ -208,7 +215,7 @@ infixl 5 |=
 fstL ::
   Lens (a, x) (b, x) a b
 fstL =
-  error "todo: fstL"
+  Lens (\f (a , x) -> flip (,) x <$> f a)
 
 -- |
 --
@@ -223,7 +230,7 @@ fstL =
 sndL ::
   Lens (x, a) (x, b) a b
 sndL =
-  error "todo: sndL"
+  Lens (\f (x , a) -> (,) x <$> f a)
 
 -- |
 --
@@ -248,8 +255,17 @@ mapL ::
   Ord k =>
   k
   -> Lens (Map k v) (Map k v) (Maybe v) (Maybe v)
-mapL =
-  error "todo: mapL"
+mapL k =
+  Lens
+        (\f m ->
+           let z = Map.lookup k m
+           in fmap (\v ->
+                      case v of
+                        Just x -> Map.insert k x m
+                        Nothing -> case z of
+                                     Nothing -> m
+                                     Just _  -> Map.delete k m) (f z)
+        )
 
 -- |
 --
@@ -274,8 +290,12 @@ setL ::
   Ord k =>
   k
   -> Lens (Set k) (Set k) Bool Bool
-setL =
-  error "todo: setL"
+setL k =
+  Lens (
+        \f s ->
+           let b = Set.member k s
+           in fmap (\b' -> bool Set.delete Set.insert b' k s) (f b)
+       )
 
 -- |
 --
@@ -288,8 +308,8 @@ compose ::
   Lens s t a b
   -> Lens q r s t
   -> Lens q r a b
-compose =
-  error "todo: compose"
+compose (Lens r1) (Lens r2) =
+  Lens (r2 . r1)
 
 -- | An alias for @compose@.
 (|.) ::
@@ -311,7 +331,7 @@ infixr 9 |.
 identity ::
   Lens a b a b
 identity =
-  error "todo: identity"
+  Lens id
 
 -- |
 --
@@ -324,8 +344,10 @@ product ::
   Lens s t a b
   -> Lens q r c d
   -> Lens (s, q) (t, r) (a, c) (b, d)
-product =
-  error "todo: product"
+product (Lens r1) (Lens r2) =
+  Lens (\p (a,c) -> getAlongsideRight (r2 (\b2 -> AlongsideRight (
+                                              getAlongsideLeft (r1 (\b1 -> AlongsideLeft (
+                                                                       p (b1,b2) )) a) )) c ))
 
 -- | An alias for @product@.
 (***) ::
@@ -354,8 +376,10 @@ choice ::
   Lens s t a b
   -> Lens q r a b
   -> Lens (Either s q) (Either t r) a b
-choice =
-  error "todo: choice"
+choice (Lens r1) (Lens r2) =
+  Lens (\f e -> case e of
+                  Left s  -> fmap Left (r1 f s)
+                  Right q -> fmap Right (r2 f q))
 
 -- | An alias for @choice@.
 (|||) ::
@@ -450,7 +474,7 @@ getSuburb ::
   Person
   -> String
 getSuburb =
-  error "todo: getSuburb"
+  get (suburbL  |. addressL)
 
 
 -- |
@@ -465,7 +489,7 @@ setStreet ::
   -> String
   -> Person
 setStreet =
-  error "todo: setStreet"
+  set (streetL |. addressL)
 
 -- |
 --
@@ -478,7 +502,7 @@ getAgeAndCountry ::
   (Person, Locality)
   -> (Int, String)
 getAgeAndCountry =
-  error "todo: getAgeAndCountry"
+  get (ageL *** countryL)
 
 -- |
 --
@@ -490,8 +514,8 @@ getAgeAndCountry =
 setCityAndLocality ::
   (Person, Address) -> (String, Locality) -> (Person, Address)
 setCityAndLocality =
-  error "todo: setCityAndLocality"
-  
+  set (cityL |. localityL |. addressL *** localityL)
+
 -- |
 --
 -- >>> getSuburbOrCity (Left maryAddress)
